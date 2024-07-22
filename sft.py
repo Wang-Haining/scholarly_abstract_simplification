@@ -15,13 +15,12 @@ from typing import List
 import torch
 import wandb
 from datasets import DatasetDict, load_from_disk
-from peft import LoraConfig, get_peft_model
 from transformers import (AutoModelForCausalLM, AutoTokenizer,
                           EarlyStoppingCallback, TrainingArguments)
 from trl import SFTTrainer, set_seed
 
-from utils import (CKPTS_DIR, DATASET_PATH, GEMMA_2B, LLAMA3_8B,
-                   MAX_INPUT_LENGTHS, MAX_OUTPUT_LENGTHS, OLMO_1B, PHI2_3B,
+from utils import (CKPTS_DIR, DATASET_PATH, GEMMA_2B,OLMO_1B, PHI2_3B,
+                   MAX_INPUT_LENGTHS, MAX_OUTPUT_LENGTHS,
                    PROJECT_NAME, RESPONSE_TEMP, SEED, TASK_PREFIX)
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -59,31 +58,16 @@ if __name__ == "__main__":
                         help="Either gemma-2b, gemma-7b, olmo-1b, llama3-8b, gpt2-xl, or phi-2")
     parser.add_argument("--learning_rate", type=float, default=1e-5)
     parser.add_argument("--per_device_train_batch_size", type=int, default=2)
-    parser.add_argument("--is_peft_model", action='store_true', help="Whether to use LoRA for finetuning")
     args = parser.parse_args()
 
     if args.model == "gemma-2b":
         model_name = GEMMA_2B
     elif args.model == "olmo-1b":
         model_name = OLMO_1B
-    elif args.model == "llama3-8b":
-        model_name = LLAMA3_8B
     elif args.model == "phi-2":
         model_name = PHI2_3B
     else:
         raise ValueError(f"Invalid model name: {args.model}")
-
-    # lora config if necessary
-    if args.is_peft_model:
-        lora_config = LoraConfig(
-            init_lora_weights="gaussian",
-            target_modules=["q_proj", "v_proj"],
-            r=16,
-            lora_alpha=32,
-            lora_dropout=0.05,
-            bias="none",
-            task_type="CAUSAL_LM",
-        )
 
     run_name = f'sft_{model_name.split("/")[-1]}'
     tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="right")
@@ -93,9 +77,6 @@ if __name__ == "__main__":
     if any(keyword in model_name.lower() for keyword in ['phi', 'llama']):
         tokenizer.add_special_tokens({'pad_token': '<pad>'})
         model.resize_token_embeddings(len(tokenizer))
-
-    if args.is_peft_model:
-        model = get_peft_model(model, lora_config)
 
     training_args = TrainingArguments(
         output_dir=f"{CKPTS_DIR}/{run_name}",
@@ -129,7 +110,6 @@ if __name__ == "__main__":
         formatting_func=formatting_func,
         max_seq_length=MAX_INPUT_LENGTHS[args.model] + MAX_OUTPUT_LENGTHS[args.model] + 10,
         args=training_args,
-        peft_config=lora_config if args.is_peft_model else None,
         callbacks=[EarlyStoppingCallback(early_stopping_patience=5)],
     )
 
