@@ -1,5 +1,5 @@
 """
-This module performs supervised finetuning on the OLMo, Gemma, and Phi-2 using the
+This module performs supervised finetuning on the OLMo, Gemma, and LLama3 using the
 Scientific Abstract-Significance Statement dataset (SASS). It concatenates scientific
 abstracts with their simplified versions using a straightforward template.
 """
@@ -19,8 +19,8 @@ from transformers import (AutoModelForCausalLM, AutoTokenizer,
                           EarlyStoppingCallback, TrainingArguments)
 from trl import SFTTrainer, set_seed
 
-from utils import (CKPTS_DIR, DATASET_PATH, GEMMA_2B,OLMO_1B, PHI2_3B,
-                   MAX_INPUT_LENGTHS, MAX_OUTPUT_LENGTHS,
+from utils import (CKPTS_DIR, DATASET_PATH, GEMMA_2B, GEMMA_7B, LLAMA3_8B,
+                   MAX_INPUT_LENGTHS, MAX_OUTPUT_LENGTHS, OLMO_1B, PHI2_3B,
                    PROJECT_NAME, RESPONSE_TEMP, SEED, TASK_PREFIX)
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -51,32 +51,30 @@ def formatting_func(example: DatasetDict) -> List[str]:
 if __name__ == "__main__":
 
     set_seed(SEED + 2122)
-    parser = argparse.ArgumentParser(description="Supervise Fine-tuning with "
-                                                 "Gemma-2B/7B, OLMo-1B, Llama3-8B or Phi-2.")
+    parser = argparse.ArgumentParser(description="Supervise Fine-tuning with Gemma-2B/7B, OLMo-1B, Llama3-8B or Phi-2.")
     parser.add_argument("--model", type=str,
                         choices=["gemma-2b", "gemma-7b", "olmo-1b", "llama3-8b", 'phi-2'],
                         help="Either gemma-2b, gemma-7b, olmo-1b, llama3-8b, gpt2-xl, or phi-2")
     parser.add_argument("--learning_rate", type=float, default=1e-5)
     parser.add_argument("--per_device_train_batch_size", type=int, default=2)
+    parser.add_argument("--gradient_checkpointing", action='store_true', help="Whether to use gradient checkpointing")
+    parser.add_argument("--deepspeed", action='store_true', help="Whether to use DeepSpeed for training")
     args = parser.parse_args()
 
     if args.model == "gemma-2b":
         model_name = GEMMA_2B
+    elif args.model == "gemma-7b":
+        model_name = GEMMA_7B
     elif args.model == "olmo-1b":
         model_name = OLMO_1B
+    elif args.model == "llama3-8b":
+        model_name = LLAMA3_8B
     elif args.model == "phi-2":
         model_name = PHI2_3B
     else:
         raise ValueError(f"Invalid model name: {args.model}")
 
     run_name = f'sft_{model_name.split("/")[-1]}'
-    tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="right")
-    dataset = load_from_disk(DATASET_PATH)
-    model = AutoModelForCausalLM.from_pretrained(model_name,
-                                                 torch_dtype=torch.bfloat16)
-    if any(keyword in model_name.lower() for keyword in ['phi', 'llama']):
-        tokenizer.add_special_tokens({'pad_token': '<pad>'})
-        model.resize_token_embeddings(len(tokenizer))
 
     training_args = TrainingArguments(
         output_dir=f"{CKPTS_DIR}/{run_name}",
@@ -100,11 +98,26 @@ if __name__ == "__main__":
         save_steps=20,
         save_total_limit=3,
         remove_unused_columns=True,
+        gradient_checkpointing=args.gradient_checkpointing,
+        gradient_checkpointing_kwargs={'use_reentrant': False} if args.gradient_checkpointing else None,
+        deepspeed='runs/ds_sft_config.json' if args.deepspeed else None,
     )
-    wandb.init(project=PROJECT_NAME, name=run_name, config=training_args)
+    wandb.init(project=PROJECT_NAME, name=run_name, config=training_args.to_dict())
+
+    tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="right")
+    dataset = load_from_disk(DATASET_PATH)
+
+    # init model after trainingArgs init
+    model = AutoModelForCausalLM.from_pretrained(model_name,
+                                                 torch_dtype=torch.bfloat16)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
+
+    if any(keyword in model_name.lower() for keyword in ['phi', 'llama']):
+        tokenizer.add_special_tokens({'pad_token': '<pad>'})
+        model.resize_token_embeddings(len(tokenizer))
 
     trainer = SFTTrainer(
-        model,
+        model=model,
         train_dataset=dataset["train"],
         eval_dataset=dataset["validation"],
         formatting_func=formatting_func,
