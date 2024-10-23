@@ -68,4 +68,11 @@ Gemma-2B has its own [license](https://ai.google.dev/gemma/terms) and requires p
 [Haining Wang](mailto:hw56@indiana.edu)
 
 ## Citation
-[todo]
+```latex
+@article{wang2024simplifying,
+  title={Simplifying Scholarly Abstracts for Accessible Digital Libraries},
+  author={Wang, Haining and Clark, Jason},
+  journal={arXiv preprint arXiv:2408.03899},
+  year={2024}
+}
+```
