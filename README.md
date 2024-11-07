@@ -69,10 +69,15 @@ Gemma-2B has its own [license](https://ai.google.dev/gemma/terms) and requires p
 
 ## Citation
 ```latex
-@article{wang2024simplifying,
-  title={Simplifying Scholarly Abstracts for Accessible Digital Libraries},
-  author={Wang, Haining and Clark, Jason},
-  journal={arXiv preprint arXiv:2408.03899},
-  year={2024}
+@inproceedings{wang2024simplifying,
+  author = {Haining Wang and Jason Clark},
+  title = {Simplifying Scholarly Abstracts for Accessible Digital Libraries Using Language Models},
+  booktitle = {The 2024 ACM/IEEE Joint Conference on Digital Libraries (JCDL '24)},
+  year = {2024},
+  location = {Hong Kong, China},
+  publisher = {ACM},
+  address = {New York, NY, USA},
+  pages = {8},
+  doi = {10.1145/3677389.3702490}
 }
 ```
